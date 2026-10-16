@@ -1,0 +1,137 @@
+/**
+ * index.css — design tokens for the audit interface & landing page.
+ *
+ * Tailwind v4 reads @theme and generates utilities from it.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #16202b;
+  --color-paper: #ffffff;
+  --color-hair: #e2e6ea;
+  --color-seal: #1b5e4a;
+  --color-caution: #9a6114;
+  --color-severity-high: #8f2d2d;
+  --color-severity-med: #9a6114;
+  --color-severity-low: #4a5a6a;
+
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-heading: "Plus Jakarta Sans", "Montserrat", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter", "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  /* Section 3.3.4 quality floor: motion is suppressed for users who ask for it. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Atmospheric backgrounds & effects */
+.bg-grid-pattern {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(22, 32, 43, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(22, 32, 43, 0.04) 1px, transparent 1px);
+}
+
+.bg-dot-pattern {
+  background-size: 20px 20px;
+  background-image: radial-gradient(rgba(22, 32, 43, 0.08) 1px, transparent 1px);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 230, 234, 0.8);
+}
+
+.dark-glass-card {
+  background: rgba(22, 32, 43, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Executive PDF Print Stylesheet */
+@media print {
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  header,
+  nav,
+  .no-print,
+  button,
+  .print-hide {
+    display: none !important;
+  }
+  .print-page-break {
+    page-break-before: always;
+  }
+  article, .rounded-xl {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   FLUID SCROLL REVEAL & INTERACTION SYSTEM
+   ──────────────────────────────────────────────────────────────────────────── */
+.reveal-init {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reveal-visible {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
+
+/* Stagger delay helpers */
+.delay-75 { transition-delay: 75ms; }
+.delay-150 { transition-delay: 150ms; }
+.delay-225 { transition-delay: 225ms; }
+.delay-300 { transition-delay: 300ms; }
+
+/* Infinite Ticker Marquee */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 32s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+

@@ -1,0 +1,49 @@
+MASTER SERVICES AGREEMENT
+This Master Services Agreement is entered into by and between Service Provider and Client.
+1. DEFINITIONS
+1.1 Definitions.
+In this Agreement, the following terms have the meanings set forth below:
+"Client" means the entity entering into this Agreement.
+"Service Provider" means the service provider entity entering into this Agreement.
+"Losses" means any claims, damages, liabilities, losses, costs, and expenses including reasonable legal fees.
+2. TERM AND TERMINATION
+2.1 Term.
+This Agreement shall commence on the Effective Date and continue for one year.
+2.2 Termination.
+Either party may terminate this Agreement on ninety days written notice to the other party.
+3. SERVICES
+3.1 Provision of Services.
+Service Provider will provide the Services described in applicable Statements of Work.
+3.2 Standards.
+Service Provider shall perform Services in a professional and workmanlike manner.
+4. FEES AND PAYMENT
+4.1 Invoicing.
+Client shall pay all undisputed invoices within thirty days of receipt.
+4.2 Taxes.
+Fees are exclusive of applicable taxes.
+
+
+5. CONFIDENTIALITY
+5.1 Duty.
+Receiving Party shall protect Confidential Information with the same degree of care as its own.
+6. INTELLECTUAL PROPERTY
+6.1 Ownership.
+Client owns all Client Data and Deliverables.
+7. WARRANTIES
+7.1 Mutual Warranties.
+Each party warrants it has full power and authority to enter into this Agreement.
+8. COMPLIANCE
+8.1 Applicable Law.
+Both parties shall comply with all applicable laws and regulations.
+9. INDEMNIFICATION
+9.1 Client Indemnity.
+Client shall indemnify Service Provider against claims arising from Client Data.
+9.2 Provider Indemnity.
+The Service Provider shall indemnify, defend, and hold harmless the Client and its officers, directors, and employees against any third-party claims, Losses, damages, or costs alleging that the Services infringe any intellectual property right. The Service Provider gives an uncapped IP indemnity, subject to the carve-outs in clause 9.3.
+9.3 Exceptions.
+Service Provider shall have no obligation under clause 9.2 for claims arising from modifications made by Client.
+10. LIMITATION OF LIABILITY
+10.1 Consequential Damages.
+Neither party will be liable for indirect or consequential damages.
+10.2 Aggregate Cap.
+Liability of the Client and Service Provider is capped at the fees paid in the preceding twelve months.

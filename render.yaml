@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: clausewise-backend
+    runtime: python
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.3
+      - key: AUDIT_ZERO_STORAGE
+        value: "1"
+      - key: AUDIT_DEV_MODE
+        value: "0"
+      - key: AUDIT_ENABLE_CACHE
+        value: "0"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: "clausewise"
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
