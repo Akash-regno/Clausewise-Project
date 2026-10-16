@@ -341,6 +341,11 @@ def require_tenant(x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-Id"
 # =============================================================================
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"status": "ok", "service": "Clausewise AI Backend", "docs": "/docs"}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """M4.5 / Section 3.7.5: Health check with mandatory professional advice disclosure."""
