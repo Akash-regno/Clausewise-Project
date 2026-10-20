@@ -1843,7 +1843,133 @@ def delete_user_account_endpoint(
 
 
 # =============================================================================
-# 11. CONTRACT AUDIT COPILOT CHATBOT (Groq / Q&A)
+# 11. FINDING EXPLANATION ENDPOINT (Plain English / Why It Matters / Counter-Language)
+# =============================================================================
+
+
+class ExplainFindingRequest(BaseModel):
+    claim_id: Optional[str] = None
+    title: Optional[str] = None
+    proposition: Optional[str] = None
+    quote: Optional[str] = None
+    severity: Optional[str] = None
+    clause_id: Optional[str] = None
+    party_affected: Optional[str] = None
+    claim_type: Optional[str] = None
+    rationale: Optional[str] = None
+    contract_type: Optional[str] = None
+
+
+@app.post("/api/audit/explain")
+async def explain_finding_endpoint(
+    req: ExplainFindingRequest,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """
+    Generates three enriched explanation sections for a single verified finding:
+      1. plain_english   — jargon-free one-paragraph breakdown of what the clause means
+      2. why_it_matters  — practical risk/business impact explanation
+      3. counter_language — specific recommended redline / alternative contract language
+    Powered by Groq; falls back to rule-based output if API key is absent.
+    """
+    title = (req.title or "").strip()
+    proposition = (req.proposition or "").strip()
+    quote = (req.quote or "").strip()
+    severity = (req.severity or "LOW").upper()
+    party = (req.party_affected or "UNSPECIFIED").replace("_", " ").title()
+    claim_type = (req.claim_type or "DESCRIPTIVE")
+    rationale = (req.rationale or "").strip()
+    contract_type = (req.contract_type or "agreement").strip()
+
+    context_parts = []
+    if title:
+        context_parts.append(f"Finding Title: {title}")
+    if proposition:
+        context_parts.append(f"Proposition: {proposition}")
+    if quote:
+        context_parts.append(f'Exact Contract Language: "{quote}"')
+    if severity:
+        context_parts.append(f"Severity: {severity}")
+    if party:
+        context_parts.append(f"Party Affected: {party}")
+    if rationale:
+        context_parts.append(f"Audit Rationale: {rationale}")
+    context_block = "\n".join(context_parts)
+
+    system_prompt = (
+        "You are a senior commercial contracts attorney providing concise, high-value analysis of a verified contract risk finding.\n\n"
+        f"CONTRACT TYPE: {contract_type}\n"
+        f"FINDING DETAILS:\n{context_block}\n\n"
+        "Generate exactly three sections. Return ONLY valid JSON in this exact structure:\n"
+        "{\n"
+        '  "plain_english": "One clear paragraph (2-4 sentences) explaining what this clause means in simple, jargon-free terms. No legal Latin. Explain as if talking to a smart non-lawyer.",\n'
+        '  "why_it_matters": "One paragraph (2-4 sentences) explaining the concrete business or financial risk this creates. Be specific about dollar exposure, operational risk, or legal jeopardy.",\n'
+        '  "counter_language": "One paragraph providing the specific alternative contract language the reviewing party should negotiate for. Include the actual replacement text in quotes where possible."\n'
+        "}\n\n"
+        "RULES: Be concise (each section max 80 words). Be specific and actionable. No disclaimers. No filler phrases."
+    )
+
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    plain_english = ""
+    why_it_matters = ""
+    counter_language = ""
+
+    if groq_api_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=groq_api_key)
+            response = client.chat.completions.create(
+                model="qwen/qwen3.8-27b",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "Generate the three-section explanation for this finding."},
+                ],
+                temperature=0.15,
+                max_tokens=600,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content or "{}"
+            # Strip any <think>...</think> tags that qwen models may emit
+            raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+            parsed = json.loads(raw)
+            plain_english = parsed.get("plain_english", "").strip()
+            why_it_matters = parsed.get("why_it_matters", "").strip()
+            counter_language = parsed.get("counter_language", "").strip()
+        except Exception as exc:
+            logger.warning("explain_finding Groq call failed: %s", exc)
+
+    # Rule-based fallback if Groq fails or key absent
+    if not plain_english:
+        plain_english = (
+            f"This clause ({title}) affects the {party} in a {contract_type}. "
+            f"{proposition or 'The provision creates a contractual obligation or risk that requires careful review.'}"
+        )
+    if not why_it_matters:
+        sev_text = {
+            "HIGH": "This is a high-severity finding that could create significant financial or legal exposure if left unaddressed.",
+            "MEDIUM": "This medium-severity clause could create operational risk or limit your negotiating flexibility in a dispute.",
+            "LOW": "While lower in immediate impact, this clause could accumulate risk over the contract lifetime.",
+            "INFORMATIONAL": "This is an informational note about a provision that deviates from market-standard practice.",
+        }.get(severity, "This finding warrants review before signing.")
+        why_it_matters = f"{sev_text} {rationale or ''}".strip()
+    if not counter_language:
+        counter_language = (
+            f"Negotiate to amend or remove the provision identified in {title}. "
+            "Seek balanced language that limits liability to direct damages only, sets reasonable caps tied to contract value, "
+            "and adds mutual obligations where appropriate. Consult legal counsel for jurisdiction-specific redlines."
+        )
+
+    return {
+        "success": True,
+        "claim_id": req.claim_id,
+        "plain_english": plain_english,
+        "why_it_matters": why_it_matters,
+        "counter_language": counter_language,
+    }
+
+
+# =============================================================================
+# 12. CONTRACT AUDIT COPILOT CHATBOT (Groq / Q&A)
 # =============================================================================
 
 class ChatMessagePayload(BaseModel):
@@ -2017,4 +2143,132 @@ async def audit_chat_endpoint(
     }
 
 
+# =============================================================================
+# 12. CLAUSE PLAIN-ENGLISH EXPLAINER (Plain English + Why It Matters + Counter-Language)
+# =============================================================================
 
+class ClauseExplainRequest(BaseModel):
+    clause_text: Optional[str] = None          # The raw quoted clause text
+    proposition: Optional[str] = None          # Audit finding proposition
+    title: Optional[str] = None                # Finding title
+    severity: Optional[str] = None             # HIGH / MEDIUM / LOW
+    contract_type: Optional[str] = None        # MSA / NDA / ...
+    party_affected: Optional[str] = None       # SERVICE_PROVIDER / CLIENT / ...
+
+
+@app.post("/api/clause/explain")
+async def explain_clause(
+    req: ClauseExplainRequest,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """
+    POST /api/clause/explain — Generate Plain English Breakdown, Why It Matters,
+    and Recommended Counter-Language for a contract clause / finding.
+
+    Called lazily from the frontend when a user expands a finding card.
+    Returns three structured fields used to render the enriched insight panel.
+    """
+    clause_text = (req.clause_text or "").strip()
+    proposition = (req.proposition or "").strip()
+    title = (req.title or "Contract Clause").strip()
+    severity = (req.severity or "MEDIUM").upper()
+    contract_type = (req.contract_type or "Commercial Agreement").strip()
+    party = (req.party_affected or "UNSPECIFIED").strip()
+
+    # Compose the context block for the LLM
+    context_parts = []
+    if title:
+        context_parts.append(f"Clause Title: {title}")
+    if contract_type:
+        context_parts.append(f"Contract Type: {contract_type}")
+    if severity:
+        context_parts.append(f"Risk Level: {severity}")
+    if party and party not in ("UNSPECIFIED", "BOTH"):
+        context_parts.append(f"Party Affected: {party.replace('_', ' ').title()}")
+    if clause_text:
+        context_parts.append(f'\nOriginal Clause Text:\n"{clause_text}"')
+    if proposition and proposition != clause_text:
+        context_parts.append(f"\nAudit Finding:\n{proposition}")
+
+    context_block = "\n".join(context_parts)
+
+    system_prompt = (
+        "You are a senior contract lawyer producing three distinct, structured explanations "
+        "for a non-expert business user reviewing a contract clause flagged during an AI audit.\n\n"
+        f"Context:\n{context_block}\n\n"
+        "Produce exactly three sections. Each section must be plain, direct, and actionable. "
+        "No disclaimers. No filler phrases.\n\n"
+        "Respond in STRICT JSON with these three keys:\n"
+        "{\n"
+        '  "plain_english": "1-3 sentence plain language explanation of exactly what this clause means in practice.",\n'
+        '  "why_it_matters": "2-3 sentences on the specific business or legal risk this creates for the affected party.",\n'
+        '  "counter_language": "1-2 sentences of specific alternative contract language the affected party should negotiate, or confirmation that the clause is standard and no changes are needed."\n'
+        "}\n\n"
+        "Output ONLY valid JSON. No markdown, no backticks, no commentary outside the JSON object."
+    )
+
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    plain_english = ""
+    why_it_matters = ""
+    counter_language = ""
+
+    if groq_api_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=groq_api_key)
+            response = client.chat.completions.create(
+                model="qwen/qwen3.8-27b",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Explain this clause: {title or proposition or clause_text}"},
+                ],
+                temperature=0.1,
+                max_tokens=480,
+                response_format={"type": "json_object"},
+            )
+            raw = (response.choices[0].message.content or "").strip()
+            # Parse JSON response
+            try:
+                parsed = json.loads(raw)
+                plain_english = str(parsed.get("plain_english", "")).strip()
+                why_it_matters = str(parsed.get("why_it_matters", "")).strip()
+                counter_language = str(parsed.get("counter_language", "")).strip()
+            except json.JSONDecodeError:
+                # Fallback: try extracting with regex
+                import re as _re
+                pe = _re.search(r'"plain_english"\s*:\s*"([^"]+)"', raw)
+                wm = _re.search(r'"why_it_matters"\s*:\s*"([^"]+)"', raw)
+                cl = _re.search(r'"counter_language"\s*:\s*"([^"]+)"', raw)
+                if pe: plain_english = pe.group(1).strip()
+                if wm: why_it_matters = wm.group(1).strip()
+                if cl: counter_language = cl.group(1).strip()
+        except Exception as exc:
+            logger.warning("Clause explain Groq error: %s", exc)
+
+    # Fallback static responses if Groq unavailable
+    if not plain_english:
+        plain_english = (
+            f"This clause ({title}) establishes specific obligations or limitations "
+            f"in this {contract_type} agreement. Review the original clause text carefully "
+            "to understand the exact terms being agreed to."
+        )
+    if not why_it_matters:
+        sev_map = {
+            "HIGH": "This is a high-risk provision that could create significant legal or financial exposure.",
+            "MEDIUM": "This provision carries moderate risk and warrants careful review before signing.",
+            "LOW": "This is a lower-risk provision, but still worth understanding before agreement.",
+            "INFORMATIONAL": "This clause is informational and does not carry direct financial risk.",
+        }
+        why_it_matters = sev_map.get(severity, sev_map["MEDIUM"])
+    if not counter_language:
+        counter_language = (
+            "Consider consulting with legal counsel to review this provision and negotiate "
+            "more balanced terms before execution."
+        )
+
+    return {
+        "success": True,
+        "plain_english": plain_english,
+        "why_it_matters": why_it_matters,
+        "counter_language": counter_language,
+    }

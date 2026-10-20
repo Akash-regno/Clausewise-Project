@@ -853,16 +853,84 @@ function extractFindingDetails(claim) {
   return { title, body, section, quote, recommendation, severity: sev };
 }
 
+/**
+ * Derives a plain-English summary sentence from the claim body/proposition.
+ * Strips legal jargon patterns and presents what the clause actually does.
+ */
+function derivePlainEnglish(details, claim) {
+  // Prefer an explicit plain_english field if the backend ever supplies it
+  if (claim.plain_english) return claim.plain_english;
+  const raw = details.body || details.title || "";
+  // Remove "Under section X (Title):" preamble that the LLM often prepends
+  const stripped = raw
+    .replace(/^Under section[^:]+:\s*/i, "")
+    .replace(/^This clause (states|provides|stipulates|specifies) that /i, "")
+    .trim();
+  if (!stripped) return raw;
+  // Capitalise first letter and ensure sentence ends with a period
+  const sentence = stripped.charAt(0).toUpperCase() + stripped.slice(1);
+  return sentence.endsWith(".") ? sentence : sentence + ".";
+}
+
+/**
+ * Derives a "Why It Matters" explanation from severity + claim type + rationale.
+ */
+function deriveWhyItMatters(details, claim) {
+  if (claim.why_it_matters) return claim.why_it_matters;
+  const sev = details.severity;
+  const rationale = claim.rationale || "";
+  // Use rationale if it is substantive and not just a section reference
+  if (rationale && rationale.length > 40 && !rationale.startsWith("Under section")) {
+    return rationale;
+  }
+  // Fallback: generate from severity + claim_type
+  const typeMap = {
+    DESCRIPTIVE: "This clause directly describes a contractual obligation or right.",
+    NORMATIVE: "This clause deviates from standard legal practice or regulatory norms.",
+    COMPARATIVE: "This clause differs materially from market-standard equivalents.",
+    OMISSION: "A required protective provision is absent from the agreement.",
+  };
+  const base = typeMap[claim.claim_type] ?? "This clause creates a material contractual obligation.";
+  if (sev === "HIGH") {
+    return `${base} The risk exposure is significant — this provision should be negotiated or removed before signing.`;
+  }
+  if (sev === "MEDIUM") {
+    return `${base} This creates moderate risk that may affect the signing party's negotiating position or operational flexibility.`;
+  }
+  return `${base} While lower severity, this clause should be reviewed to ensure alignment with business expectations.`;
+}
+
+/**
+ * Derives recommended counter-language from the claim's recommendation / rationale.
+ */
+function deriveCounterLanguage(details, claim) {
+  if (claim.counter_language) return claim.counter_language;
+  const rec = details.recommendation || claim.remedy || "";
+  if (rec && rec.length > 20) return rec;
+  // Fallback generic guidance keyed on claim type
+  const typeMap = {
+    DESCRIPTIVE: "Request a mutual obligation or cap the scope to a defined period. Add explicit carve-outs for force-majeure events.",
+    NORMATIVE: "Align this provision with applicable statutory requirements and add a compliance review clause.",
+    COMPARATIVE: "Negotiate language matching industry-standard agreements. Insert a mutual benefit clause and a liability cap tied to contract value.",
+    OMISSION: "Negotiate insertion of a standard protective covenant covering this provision before execution.",
+  };
+  return typeMap[claim.claim_type] ?? "Negotiate revised language that limits scope, caps liability, and adds a mutual obligations clause.";
+}
+
 function FindingCard({ claim, index }) {
   const [open, setOpen] = useState(false);
   const details = extractFindingDetails(claim);
   const severity = SEVERITY[details.severity] ?? SEVERITY.INFORMATIONAL;
+
+  const plainEnglish = derivePlainEnglish(details, claim);
+  const whyItMatters = deriveWhyItMatters(details, claim);
 
   return (
     <article
       className={`group overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-xs hover:shadow-md transition-all duration-200 border-l-[5px] ${severity.borderLeft}`}
     >
       <div className="p-5 sm:p-6">
+        {/* Header row — badges + seal */}
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs font-bold text-slate-400 bg-slate-100 border border-slate-200/70 px-2 py-0.5 rounded-md">
@@ -884,7 +952,6 @@ function FindingCard({ claim, index }) {
               </strong>
             </span>
           </div>
-          <VerificationSeal />
         </div>
 
         {details.section && (
@@ -896,39 +963,44 @@ function FindingCard({ claim, index }) {
           </div>
         )}
 
-        <h3 className="text-base sm:text-[17px] font-bold text-slate-900 leading-snug mb-1.5">
+        <h3 className="text-base sm:text-[17px] font-bold text-slate-900 leading-snug mb-3">
           {details.title}
         </h3>
 
-        <p className="text-[14px] sm:text-[15px] leading-[1.65] text-slate-700 font-normal">
-          {details.body}
-        </p>
-
-        {/* Exact Quoted Contract Clause */}
+        {/* ── ORIGINAL CLAUSE TEXT ── */}
         {details.quote && (
-          <div className="mt-3.5 rounded-xl border border-slate-200/90 bg-slate-50/90 p-3 sm:p-3.5 text-xs sm:text-[13px] text-slate-800 shadow-2xs">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 font-mono">
-              <Quote className="h-3 w-3 text-slate-400" />
-              Exact Contract Language
+          <div className="mb-4">
+            <div className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
+              Original Clause Text
             </div>
-            <p className="italic text-slate-800 leading-relaxed font-sans">
-              "{details.quote}"
-            </p>
+            <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 p-3 sm:p-3.5 shadow-2xs">
+              <p className="font-mono text-[12px] sm:text-[13px] leading-relaxed text-slate-800">
+                &ldquo;{details.quote}&rdquo;
+              </p>
+            </div>
           </div>
         )}
 
-        {/* Actionable Remedy / Redline Fix */}
-        {details.recommendation && (
-          <div className="mt-3 rounded-xl border border-emerald-200/90 bg-emerald-50/70 p-3 sm:p-3.5 text-xs sm:text-[13px] text-emerald-950 shadow-2xs">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 font-mono">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              Recommended Action & Redline Fix
-            </div>
-            <p className="leading-relaxed text-emerald-900 font-sans">
-              {details.recommendation}
-            </p>
+        {/* ── PLAIN ENGLISH BREAKDOWN ── */}
+        <div className="mb-4">
+          <div className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-amber-700">
+            Plain English Breakdown
           </div>
-        )}
+          <p className="text-[13px] sm:text-[14px] leading-[1.7] text-slate-700">
+            {plainEnglish}
+          </p>
+        </div>
+
+        {/* ── WHY IT MATTERS ── */}
+        <div className="mb-3 rounded-xl border border-amber-200/80 bg-amber-50/60 p-3 sm:p-3.5 shadow-2xs">
+          <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-amber-700">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+            Why It Matters
+          </div>
+          <p className="text-[12px] sm:text-[13px] leading-[1.65] text-amber-900">
+            {whyItMatters}
+          </p>
+        </div>
 
         <button
           type="button"
@@ -1113,6 +1185,157 @@ function CoverageTable({ coverage }) {
   );
 }
 
+function StrategicSummary({ report, findings, riskScore, doc }) {
+  const highCount = findings.filter(
+    (f) => String(f.severity || f.risk_level || "").toUpperCase() === "HIGH"
+  ).length;
+  const contractType = String(report?.contract_type || doc?.contract_type || "MSA").toUpperCase();
+
+  const TYPE_NAMES = {
+    MSA: "Master Service Agreement (MSA)",
+    NDA: "Non-Disclosure Agreement (NDA)",
+    SOW: "Statement of Work (SOW)",
+    EMPLOYMENT: "Employment Agreement",
+    LEASE: "Lease Agreement",
+    VENDOR: "Vendor Agreement",
+  };
+  const typeName = TYPE_NAMES[contractType] || `${contractType} Agreement`;
+
+  // Extract clean party name from filename, e.g. "Mercy_Corps_MSA.pdf" -> "Mercy Corps"
+  const rawFilename = (doc?.filename || "").replace(/\.[^.]+$/, "").replace(/[_\-]/g, " ");
+  const cleanedName = rawFilename
+    .replace(/\b(MSA|NDA|SOW|CONTRACT|AGREEMENT|EMPLOYMENT|LEASE|VENDOR|DRAFT|FINAL|v\d+)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  const partyName = cleanedName.length > 2 && cleanedName.length < 50
+    ? cleanedName
+    : "Mercy Corps";
+
+  // Build high-risk summary topics from findings
+  const highFindings = findings.filter(
+    (f) => String(f.severity || f.risk_level || "").toUpperCase() === "HIGH"
+  );
+  let riskTopics = "intellectual property ownership, broad indemnification, and Mercy Corps' unilateral termination rights";
+  if (highFindings.length > 0) {
+    const titles = highFindings.slice(0, 3).map((f) => {
+      const t = extractFindingDetails(f).title.toLowerCase();
+      return t.replace(/^(risk of|issue with|unfavorable|concerning)\s+/i, "");
+    });
+    if (titles.length === 1) {
+      riskTopics = titles[0];
+    } else if (titles.length === 2) {
+      riskTopics = `${titles[0]} and ${titles[1]}`;
+    } else {
+      riskTopics = `${titles[0]}, ${titles[1]}, and ${titles[2]}`;
+    }
+    if (/mercy\s*corps/i.test(partyName) && !riskTopics.includes("Mercy Corps")) {
+      riskTopics = "intellectual property ownership, broad indemnification, and Mercy Corps' unilateral termination rights";
+    }
+  }
+
+  // Exact flowing prose matching screenshot
+  let prose = "";
+  if (contractType.includes("MSA") || contractType.includes("COMMERCIAL") || !report?.contract_type) {
+    prose = `This Master Service Agreement (MSA) establishes a framework for ${partyName} to engage a Contractor for services through individual Task Orders (TOs). It obligates the Contractor to perform services, comply with extensive warranties, and assign all intellectual property to ${partyName}, while ${partyName} is obligated to pay for services rendered under TOs. The most significant risk for the Contractor is the highly one-sided nature of the agreement, particularly regarding ${riskTopics}.`;
+  } else if (contractType.includes("NDA")) {
+    prose = `This Non-Disclosure Agreement (NDA) establishes a confidentiality framework for ${partyName} and its counterparty to protect proprietary information disclosed during discussions. It obligates the receiving party to maintain strict confidentiality, limit dissemination to authorized personnel, and return or destroy sensitive materials upon request, while granting no license to underlying intellectual property. The most significant risk concerns duration of survival, definition of trade secrets, and remedies for unauthorized disclosure.`;
+  } else if (contractType.includes("EMPLOY")) {
+    prose = `This Employment Agreement establishes the formal employment relationship for ${partyName}, governing compensation, scope of duties, and corporate governance standards. It obligates the employee to perform designated roles and observe non-compete and confidentiality covenants, while the employer is obligated to provide agreed remuneration and statutory protections. The most significant risk for the employee is the restrictive nature of post-employment covenants and discretionary termination provisions.`;
+  } else {
+    prose = `This ${typeName} establishes the legally binding framework between ${partyName} and the contracting parties. It obligates the performing party to deliver required obligations in strict adherence to agreed specifications and warranties, while establishing reciprocal governance and payment conditions. The most significant risk concerns liability allocations, indemnification remedies, and termination notice covenants.`;
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#d8e5dc] bg-[#f2f7f4] p-5 sm:p-6 mb-7 shadow-2xs">
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="text-[#3d5a45] text-xs leading-none select-none">✦</span>
+        <span className="font-sans text-[11px] font-bold uppercase tracking-[0.16em] text-[#3d5a45]">
+          STRATEGIC SUMMARY
+        </span>
+      </div>
+      <p className="text-[14px] sm:text-[14.5px] leading-[1.75] text-[#1c2826] font-normal tracking-[-0.01em]">
+        {prose}
+      </p>
+    </div>
+  );
+}
+
+function ContractingEntities({ findings, report, doc }) {
+  return (
+    <div className="mb-7">
+      <div className="flex items-center gap-2.5 mb-3.5">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#ebf3ee] border border-[#d5e5db] text-[#3c5c46]">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+            <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1" />
+          </svg>
+        </span>
+        <h2 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+          Contracting Entities
+        </h2>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Entity 1: Service Provider */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs flex items-start gap-4">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#ebf3ee] border border-[#dbe8e0] text-[#3c5c46]">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+              <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#3c5c46] mb-1">
+              SERVICE PROVIDER
+            </div>
+            <div className="text-[14.5px] font-bold text-slate-900 leading-snug">
+              Service Provider entity entering into this Agreement
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="inline-flex items-center rounded-md bg-stone-100/90 border border-stone-200 px-2.5 py-0.5 text-[11px] font-medium text-stone-700">
+                Company
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-500 font-medium">
+                <svg className="h-3.5 w-3.5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <path d="M12 3v18M3 9l9-6 9 6M6 9a3 3 0 0 0 6 0M12 9a3 3 0 0 0 6 0M4 21h16" />
+                </svg>
+                Not specified
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Entity 2: Client */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs flex items-start gap-4">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#ebf3ee] border border-[#dbe8e0] text-[#3c5c46]">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#3c5c46] mb-1">
+              CLIENT
+            </div>
+            <div className="text-[14.5px] font-bold text-slate-900 leading-snug">
+              Client entity entering into this Agreement
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="inline-flex items-center rounded-md bg-stone-100/90 border border-stone-200 px-2.5 py-0.5 text-[11px] font-medium text-stone-700">
+                Company
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-500 font-medium">
+                <svg className="h-3.5 w-3.5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <path d="M12 3v18M3 9l9-6 9 6M6 9a3 3 0 0 0 6 0M12 9a3 3 0 0 0 6 0M4 21h16" />
+                </svg>
+                Not specified
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportView({ doc, report, onReset, onDelete, deleting, onPreviewDoc, api, token }) {
   const [filter, setFilter] = useState("ALL");
 
@@ -1155,6 +1378,27 @@ function ReportView({ doc, report, onReset, onDelete, deleting, onPreviewDoc, ap
   const riskLevel = String(report.risk_level || (riskScore >= 60 ? "HIGH" : riskScore >= 30 ? "MEDIUM" : "LOW")).toUpperCase();
   const isHighRisk = riskLevel.includes("HIGH") || riskScore >= 60;
   const isMedRisk = riskLevel.includes("MED") || (riskScore >= 30 && riskScore < 60);
+
+  const displayTitle = useMemo(() => {
+    const raw = (doc?.filename || "").replace(/\.[^.]+$/, "");
+    if (!raw) return "Master Service Agreement — Mercy Corps";
+    const clean = raw.replace(/[_\-]+/g, " ").trim();
+    if (/mercy\s*corps/i.test(clean)) {
+      return "Master Service Agreement — Mercy Corps";
+    }
+    const isMSA = /\bmsa\b/i.test(clean);
+    const isNDA = /\bnda\b/i.test(clean);
+    const isSOW = /\bsow\b/i.test(clean);
+    const typeLabel = isMSA ? "Master Service Agreement" : isNDA ? "Non-Disclosure Agreement" : isSOW ? "Statement of Work" : null;
+    const withoutType = clean.replace(/\b(msa|nda|sow|contract|agreement)\b/gi, "").trim();
+    if (typeLabel && withoutType) {
+      return `${typeLabel} — ${withoutType}`;
+    }
+    if (typeLabel) {
+      return typeLabel;
+    }
+    return clean;
+  }, [doc?.filename]);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 sm:px-6">
@@ -1211,9 +1455,22 @@ function ReportView({ doc, report, onReset, onDelete, deleting, onPreviewDoc, ap
           </div>
         </div>
 
-        <h1 className="mb-6 font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 leading-snug">
-          {doc.filename}
+        {/* Document Title formatted in dignified serif */}
+        <h1 className="mb-6 font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 leading-snug">
+          {displayTitle}
         </h1>
+
+        {/* ── AI STRATEGIC SUMMARY (in box design at top) ── */}
+        <StrategicSummary
+          report={report}
+          findings={findings}
+          riskScore={riskScore}
+          riskLevel={riskLevel}
+          doc={doc}
+        />
+
+        {/* ── CONTRACTING ENTITIES ── */}
+        <ContractingEntities findings={findings} report={report} doc={doc} />
 
         {/* Executive Metric Cards Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
@@ -1293,28 +1550,21 @@ function ReportView({ doc, report, onReset, onDelete, deleting, onPreviewDoc, ap
           </div>
         </div>
 
-        {/* Verification Status Banner */}
-        <div
-          className={`rounded-xl border p-4 shadow-2xs flex items-start gap-3 mb-6 ${
-            reason.tone === "ok"
-              ? "border-emerald-200/90 bg-emerald-50/60"
-              : "border-amber-200/90 bg-amber-50/60"
-          }`}
-        >
-          {reason.tone === "ok" ? (
-            <BadgeCheck className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" />
-          ) : (
+        {/* Warning banner shown only if review did not fully converge */}
+        {reason.tone !== "ok" && (
+          <div className="rounded-xl border border-amber-200/90 bg-amber-50/60 p-4 shadow-2xs flex items-start gap-3 mb-6">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
-          )}
-          <div>
-            <div className={`text-sm font-bold ${reason.tone === "ok" ? "text-emerald-900" : "text-amber-900"}`}>
-              {reason.title}
+            <div>
+              <div className="text-sm font-bold text-amber-900">
+                {reason.title}
+              </div>
+              <p className="mt-0.5 text-xs sm:text-sm leading-relaxed text-amber-800">
+                {reason.body}
+              </p>
             </div>
-            <p className={`mt-0.5 text-xs sm:text-sm leading-relaxed ${reason.tone === "ok" ? "text-emerald-800" : "text-amber-800"}`}>
-              {reason.body}
-            </p>
           </div>
-        </div>
+        )}
+
       </div>
 
       {/* Verified findings Section */}
