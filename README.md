@@ -6,14 +6,15 @@ Clausewise is an AI-powered contract risk audit platform combining multi-pass ag
 
 ```
 ├── backend/
+│   ├── database.py             # MongoDB Atlas connection, GridFS archival & audit history vault
 │   ├── schemas.py              # Strict Pydantic data models (Claim, AuditState, V1/V2/V3 predicates)
 │   ├── ingest.py               # PDF ingestion, structural clause segmentation, & xref graph
-│   ├── retriever.py            # Vector database client & deterministic text_at verification
+│   ├── retriever.py            # Hybrid retriever & deterministic text_at verification
 │   ├── graph.py                # LangGraph state machine with per-claim freezing & Groq LLM integration
 │   ├── main.py                 # FastAPI web server (SSE streaming, tenancy, 4-leg deletion saga)
 │   ├── requirements.txt        # Backend dependencies
 │   ├── test_loop.py            # Freezing and loop termination test suite
-│   ├── test_retriever.py       # Pinecone retriever & non-circular V2 verification tests
+│   ├── test_retriever.py       # Retriever & non-circular V2 verification tests
 │   ├── test_api.py             # End-to-end FastAPI integration tests
 │   └── test_contract.pdf       # Sample test contract for audits and tests
 │

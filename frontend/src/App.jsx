@@ -631,8 +631,8 @@ function LiveMetricsPanel({ metrics }) {
         />
         <AnimatedCounter
           value={pinecone}
-          label="Pinecone Reads"
-          sublabel="vector DB queries"
+          label="MongoDB Reads"
+          sublabel="clause & audit queries"
           color="emerald"
           icon={Search}
         />
