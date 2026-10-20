@@ -941,6 +941,7 @@ async def _run_audit_pipeline(
                     file_size_bytes=getattr(record, "file_size_bytes", 0),
                     contract_type=getattr(record.contract_type, "value", str(record.contract_type)),
                     report_data=report.model_dump(mode="json"),
+                    total_clauses=getattr(record, "n_clauses", 0),
                 )
             except Exception as _dbe:
                 logger.warning("MongoDB save_audit_history (cache) failed: %s", _dbe)
@@ -1136,6 +1137,7 @@ async def _run_audit_pipeline(
                     file_size_bytes=getattr(record, "file_size_bytes", 0),
                     contract_type=getattr(record.contract_type, "value", str(record.contract_type)),
                     report_data=report.model_dump(mode="json"),
+                    total_clauses=getattr(record, "n_clauses", 0),
                 )
             except Exception as _dbe:
                 logger.warning("MongoDB save_audit_history (live) failed: %s", _dbe)
